@@ -1,0 +1,28 @@
+name:                carma-models
+version:             0.1.0.0
+-- synopsis:            
+-- description:         
+homepage:            http://github.com/mvoidex/carma-models
+license:             BSD3
+license-file:        LICENSE
+author:              Alexandr `Voidex` Ruchkin
+maintainer:          voidex@live.com
+-- copyright:           
+-- category:            
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  hs-source-dirs: src
+  exposed-modules:
+    Model
+    Model.Base
+    Model.Case
+  other-modules:
+  build-depends:
+    base >= 4.5 && < 6,
+    text == 0.11.*,
+    bytestring == 0.9.*,
+    aeson == 0.6.*,
+    data-serialization == 0.1.*,
+    data-serialization-aeson == 0.1.*
