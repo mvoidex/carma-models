@@ -24,7 +24,7 @@ instance Monoid Case where
     mappend = mappendIso caseIso
 
 instance Model Case where
-    asJson =
+    asDict =
         field "first" .**.
         field "second" .**.
         field "name"
