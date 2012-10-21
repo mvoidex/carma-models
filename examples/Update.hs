@@ -31,10 +31,8 @@ run = do
     run' test
     where
         printDecl :: IO ()
-        printDecl = M.foldrWithKey printOne (return ()) $ modelInfo test where
-            printOne k decl act = do
-                T.putStrLn $ T.concat [k, ": ", decl]
-                act
+        printDecl = mapM_ printOne $ modelInfo test where
+            printOne (k, (FieldInfo desc)) = T.putStrLn $ T.concat [k, ": ", desc]
         run' :: Case -> IO ()
         run' v = do
             putStr "> "

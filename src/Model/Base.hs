@@ -3,6 +3,7 @@
 module Model.Base (
     Field(..),
     emptyField, mkField,
+    Meta(..), FieldInfo(..), ModelInfo,
     field,
     memptyIso, mappendIso,
     FieldSource(..), ModelSource(..),
@@ -66,12 +67,16 @@ instance Monoid m => Combine (Meta m v) where
     pures x = Meta (pures x) mempty
     fails = Meta fails mempty
 
+-- | Field meta information
+data FieldInfo = FieldInfo {
+    fieldDescription :: Text }
+
 -- | Meta model information
-type ModelInfo = M.Map Text Text
+type ModelInfo = [(Text, FieldInfo)]
 
 -- | Field serializer
-field :: (FieldSource v, DictionaryValue v a) => Text -> Text -> Meta ModelInfo v (Field a)
-field name desc = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) (M.singleton name desc)
+field :: (FieldSource v, DictionaryValue v a) => Text -> i -> Meta [(Text, i)] v (Field a)
+field name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) [(name, meta)]
 
 -- | Monoid by iso
 -- Used in definition of 'Monoid' for 'Model'
