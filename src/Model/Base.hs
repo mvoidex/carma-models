@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Model.Base (
     Field(..),
@@ -6,7 +7,7 @@ module Model.Base (
     Meta(..), FieldInfo(..), ModelInfo,
     field,
     memptyIso, mappendIso,
-    FieldSource(..), ModelSource(..),
+    FieldSource, ModelSource(..),
     Model(..),
     Partial(..),
     jsonModel, redisModel,
@@ -24,7 +25,6 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Data.Function (fix)
 
 import Data.Serialization
 import Data.Serialization.Dictionary
@@ -32,6 +32,11 @@ import Data.Serialization.Text.Print
 import Data.Serialization.Text.Attoparsec
 import Data.Serialization.JSON.Aeson
 import Data.Serialization.JSON.Aeson as S (toJSON, fromJSON)
+import Data.Serialization.Postgresql
+import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.ToField (ToField)
+import Database.PostgreSQL.Simple.FromRow (FromRow(..))
+import Database.PostgreSQL.Simple.ToRow (ToRow(..))
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString.Char8 as P
 
@@ -50,22 +55,23 @@ mkField = Field . Just
 instance Monoid (Field a) where
     mempty = Field Nothing
     mappend l (Field Nothing) = l
-    mappend l r = r
+    mappend _ r = r
 
 -- | Field with documentation
 data Meta m v a = Meta {
     metaDict :: Dictionarable Text v a,
+    metaPg :: Postgresable a,
     metaInfo :: m }
 
 instance Monoid m => Combine (Meta m v) where
-    (Meta ld li) .**. (Meta rd ri) = Meta (ld .**. rd) (mappend li ri)
-    (Meta ld li) .++. (Meta rd ri) = Meta (ld .++. rd) (mappend li ri)
-    (Meta ld li) .+. (Meta rd ri) = Meta (ld .+. rd) (mappend li ri)
-    iso <<>> (Meta d i) = Meta (iso <<>> d) i
-    (Meta d i) .:. iso = Meta (d .:. iso) i
-    (Meta d i) .*>> f = Meta (d .*>> (metaDict . f)) i
-    pures x = Meta (pures x) mempty
-    fails = Meta fails mempty
+    (Meta ld lp li) .**. (Meta rd rp ri) = Meta (ld .**. rd) (lp .**. rp) (mappend li ri)
+    (Meta ld lp li) .++. (Meta rd rp ri) = Meta (ld .++. rd) (lp .++. rp) (mappend li ri)
+    (Meta ld lp li) .+. (Meta rd rp ri) = Meta (ld .+. rd) (lp .+. rp) (mappend li ri)
+    iso <<>> (Meta d p i) = Meta (iso <<>> d) (iso <<>> p) i
+    (Meta d p i) .:. iso = Meta (d .:. iso) (p .:. iso) i
+    (Meta d p i) .*>> f = Meta (d .*>> (metaDict . f)) (p .*>> (metaPg . f)) i
+    pures x = Meta (pures x) (pures x) mempty
+    fails = Meta fails fails mempty
 
 -- | Field meta information
 data FieldInfo = FieldInfo {
@@ -75,8 +81,8 @@ data FieldInfo = FieldInfo {
 type ModelInfo = [(Text, FieldInfo)]
 
 -- | Field serializer
-field :: (FieldSource v, DictionaryValue v a) => Text -> i -> Meta [(Text, i)] v (Field a)
-field name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) [(name, meta)]
+field :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, i)] v (Field a)
+field name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) (Iso Field fieldValue <<>> pgField) [(name, meta)]
 
 -- | Monoid by iso
 -- Used in definition of 'Monoid' for 'Model'
@@ -119,13 +125,13 @@ instance DictionaryValue ByteString Int where
     dictionaryValue = recode $ textual P.decimal
 
 instance DictionaryValue ByteString Text where
-    dictionaryValue = recode $ textual $ fmap T.decodeUtf8 $ P.takeByteString
+    dictionaryValue = recode $ textual $ fmap T.decodeUtf8 P.takeByteString
 
 instance DictionaryValue ByteString Double where
     dictionaryValue = recode $ textual P.double
 
 instance DictionaryValue ByteString String where
-    dictionaryValue = recode $ textual $ fmap (T.unpack . T.decodeUtf8) $ P.takeByteString
+    dictionaryValue = recode $ textual $ fmap (T.unpack . T.decodeUtf8) P.takeByteString
 
 -- | 'Model' class, defines way to serialize data
 class Monoid m => Model m where
@@ -137,6 +143,10 @@ class Monoid m => Model m where
         DictionaryValue v String)
         => Meta ModelInfo v m
 
+-- | Dummy asDict' to fix type
+asDict' :: Model m => Meta ModelInfo ByteString m
+asDict' = asDict
+
 -- | Default instance for Aeson
 instance Model m => A.ToJSON m where
     toJSON = S.toJSON jsonModel
@@ -144,6 +154,14 @@ instance Model m => A.ToJSON m where
 -- | Default instance for Aeson
 instance Model m => A.FromJSON m where
     parseJSON = S.fromJSON jsonModel
+
+-- | Default instance for Postgresql
+instance Model m => FromRow m where
+    fromRow = rowParser $ metaPg asDict'
+
+-- | Default instance for Postgresql
+instance Model m => ToRow m where
+    toRow = rowWriter $ metaPg asDict'
 
 -- | Dummy type to show, that model is not value itself, it's just partial value
 newtype Partial m = Partial { partial :: m }
@@ -168,9 +186,9 @@ redisModel = rawDict <~> metaDict asDict where
     fromDict = M.mapKeys T.encodeUtf8
 
 modelInfo :: Model m => m -> ModelInfo
-modelInfo v = metaInfo (asDict' v) where
-    asDict' :: Model m => m -> Meta ModelInfo ByteString m
-    asDict' _ = asDict
+modelInfo v = metaInfo (asDict_ v) where
+    asDict_ :: Model m => m -> Meta ModelInfo ByteString m
+    asDict_ _ = asDict
 
 -- | Update value with partial data
 update :: Monoid m => m -> Partial m -> m

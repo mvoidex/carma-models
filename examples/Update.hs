@@ -1,11 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Update (
+    test, run
     ) where
 
-import Control.Monad
-
-import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -32,7 +30,7 @@ run = do
     where
         printDecl :: IO ()
         printDecl = mapM_ printOne $ modelInfo test where
-            printOne (k, (FieldInfo desc)) = T.putStrLn $ T.concat [k, ": ", desc]
+            printOne (k, FieldInfo desc) = T.putStrLn $ T.concat [k, ": ", desc]
         run' :: Case -> IO ()
         run' v = do
             putStr "> "

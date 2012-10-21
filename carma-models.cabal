@@ -29,4 +29,6 @@ library
     data-serialization == 0.1.*,
     data-serialization-attoparsec == 0.1.*,
     data-serialization-dictionary == 0.1.*,
-    data-serialization-aeson == 0.1.*
+    data-serialization-aeson == 0.1.*,
+    data-serialization-postgresql == 0.1.*,
+    postgresql-simple == 0.1.*
