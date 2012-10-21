@@ -1,9 +1,14 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Update (
     ) where
 
 import Control.Monad
 
+import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as C8
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 
 import Model
 import Model.Case
@@ -21,13 +26,21 @@ test = mempty
 -- {"first":12, "name":"World"}
 -- > {"second":122.2,"name":"World","first":12}
 run :: IO ()
-run = run' test where
-    run' :: Case -> IO ()
-    run' v = do
-        putStr "> "
-        either putStrLn C8.putStrLn $ encodeModel v
-        i <- getLine
-        either onError onUpdate $ decodePartial (C8.pack i)
-        where
-            onError e = putStrLn e >> run' v
-            onUpdate x = run' $ update v x
+run = do
+    printDecl
+    run' test
+    where
+        printDecl :: IO ()
+        printDecl = M.foldrWithKey printOne (return ()) $ modelInfo test where
+            printOne k decl act = do
+                T.putStrLn $ T.concat [k, ": ", decl]
+                act
+        run' :: Case -> IO ()
+        run' v = do
+            putStr "> "
+            either putStrLn C8.putStrLn $ encodeModel v
+            i <- getLine
+            either onError onUpdate $ decodePartial (C8.pack i)
+            where
+                onError e = putStrLn e >> run' v
+                onUpdate x = run' $ update v x

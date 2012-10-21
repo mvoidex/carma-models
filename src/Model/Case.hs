@@ -25,8 +25,8 @@ instance Monoid Case where
 
 instance Model Case where
     asDict =
-        field "first" .**.
-        field "second" .**.
-        field "name"
+        field "first" "First field" .**.
+        field "second" "Second field" .**.
+        field "name" "Third field"
         .:.
         caseIso
