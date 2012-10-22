@@ -5,7 +5,7 @@ module Model.Base (
     Field(..),
     emptyField, mkField,
     Meta(..), FieldInfo(..), ModelInfo,
-    field,
+    field, field_,
     memptyIso, mappendIso,
     FieldSource, ModelSource(..),
     Model(..),
@@ -78,11 +78,19 @@ data FieldInfo = FieldInfo {
     fieldDescription :: Text }
 
 -- | Meta model information
-type ModelInfo = [(Text, FieldInfo)]
+type ModelInfo = [(Text, Maybe FieldInfo)]
 
 -- | Field serializer
-field :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, i)] v (Field a)
-field name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) (Iso Field fieldValue <<>> pgField) [(name, meta)]
+fieldMeta :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, i)] v (Field a)
+fieldMeta name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) (Iso Field fieldValue <<>> pgField) [(name, meta)]
+
+-- | Field serializer
+field :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, Maybe i)] v (Field a)
+field name meta = fieldMeta name (Just meta)
+
+-- | Field serializer with no meta info
+field_ :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> Meta [(Text, Maybe i)] v (Field a)
+field_ name = fieldMeta name Nothing
 
 -- | Monoid by iso
 -- Used in definition of 'Monoid' for 'Model'
