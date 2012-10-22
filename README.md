@@ -30,7 +30,7 @@ instance Model MyModel where
 To get description:
 
 <pre>
-myInfo :: Map Text Text -- field -&gt; desc
+myInfo :: [(Text, FieldInfo)]
 myInfo = modelInfo (undefined :: MyModel)
 </pre>
 
