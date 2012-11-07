@@ -1,68 +1,60 @@
-{-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, KindSignatures, DataKinds, DeriveGeneric, FlexibleInstances, MultiParamTypeClasses, OverlappingInstances #-}
 
 module Model.Case (
-    Case(..),
-    caseIso
+    Case(..)
     ) where
 
-import Data.Text (Text)
+import GHC.Generics
 
-import Data.Iso
+import Data.Text (Text)
+import Data.Time
+
 import Model.Base
 
 -- | Case model
-data Case = Case {
-    caseId :: Field Int,
-    caseCarMake :: Field Text,
-    caseCarModel :: Field Text,
-    caseCarProgram :: Field Text,
-    caseCarVin :: Field Text,
-    -- caseCarBuyDate :: Field UTCTime,
-    caseCarPlateNum :: Field Text,
-    caseCarCarModel :: Field Text,
-    caseDiagnosis1 :: Field Text,
-    caseDiagnosis2 :: Field Text,
-    caseDealerCause :: Field Text,
-    caseAddressAddress :: Field Text,
-    -- caseCallDate :: Field UTCTime,
-    caseCallTaker :: Field Text,
-    caseContactName :: Field Text,
-    caseComment :: Field Text,
-    caseProgram :: Field Text,
-    caseServices :: Field Text,
-    caseContactOwnerName :: Field Text,
-    casePartnerName :: Field Text }
-        deriving (Eq, Ord, Read, Show)
-
--- | Make isomorphism Case <->tuple
-$(makeIso "caseIso" ''Case)
-
--- | Define Monoid in terms of corresponding tuple
-instance Monoid Case where
-    mempty = memptyIso caseIso
-    mappend = mappendIso caseIso
+data Case (k :: FieldKind) = Case {
+    caseId :: Field k Int,
+    caseCarMake :: Field k Text,
+    caseCarModel :: Field k Text,
+    caseCarProgram :: Field k Text,
+    caseCarVin :: Field k Text,
+    caseCarBuyDate :: Field k UTCTime,
+    caseCarPlateNum :: Field k Text,
+    caseCarCarModel :: Field k Text,
+    caseDiagnosis1 :: Field k Text,
+    caseDiagnosis2 :: Field k Text,
+    caseDealerCause :: Field k Text,
+    caseAddressAddress :: Field k Text,
+    caseCallDate :: Field k UTCTime,
+    caseCallTaker :: Field k Text,
+    caseContactName :: Field k Text,
+    caseComment :: Field k Text,
+    caseProgram :: Field k Text,
+    caseServices :: Field k Text,
+    caseContactOwnerName :: Field k Text,
+    casePartnerName :: Field k Text }
+        deriving (Generic)
 
 instance Model Case where
-    asDict =
-        field "id" (FieldInfo "Id of case") .**.
-        field_ "car_make" .**.
-        field_ "car_model"  .**.
-        field_ "car_program"  .**.
-        field_ "car_vin" .**.
-        -- field_ "car_buyDate" .**.
-        field_ "car_plateNum" .**.
-        field_ "car_carModel" .**.
-        field_ "diagnosis1" .**.
-        field_ "diagnosis2" .**.
-        field_ "dealerCause" .**.
-        field_ "caseAddress_address" .**.
-        -- field_ "callDate" .**.
-        field_ "callTaker" .**.
-        field_ "contact_name" .**.
-        field_ "comment" .**.
-        field_ "program" .**.
-        field_ "services" .**.
-        field_ "contact_ownerName" .**.
-        field_ "partner_name"
-        .:.
-        caseIso
+    desc = Case
+        (FieldMeta "id")
+        (FieldMeta "car_make")
+        (FieldMeta "car_model")
+        (FieldMeta "car_program")
+        (FieldMeta "car_vin")
+        (FieldMeta "car_buyDate")
+        (FieldMeta "car_plateNum")
+        (FieldMeta "car_carModel")
+        (FieldMeta "diagnosis1")
+        (FieldMeta "diagnosis2")
+        (FieldMeta "dealerCause")
+        (FieldMeta "caseAddress_address")
+        (FieldMeta "callDate")
+        (FieldMeta "callTaker")
+        (FieldMeta "contact_name")
+        (FieldMeta "comment")
+        (FieldMeta "program")
+        (FieldMeta "services")
+        (FieldMeta "contact_ownerName")
+        (FieldMeta "partner_name")
+

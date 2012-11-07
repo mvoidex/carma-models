@@ -1,22 +1,22 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators, DataKinds, PolyKinds, TypeFamilies, RankNTypes, ConstraintKinds, DefaultSignatures, OverlappingInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Model.Base (
-    Field(..),
-    emptyField, mkField,
-    Meta(..), FieldInfo(..), ModelInfo,
-    field, field_,
-    memptyIso, mappendIso,
-    FieldSource, ModelSource(..),
+    -- * Model field
+    FieldKind(..),
+    FieldMeta(..),
+    Field,
     Model(..),
-    Partial(..),
-    jsonModel, redisModel,
-    modelInfo,
-    update,
-    encodePartial, decodePartial,
+    
+    -- * Model serialization
+    modelJSON, modelRedis,
+    encodeJSON, decodeJSON,
+    encodeRedis, decodeRedis,
 
-    module Data.Monoid,
-    (.**.), (.:.)
+    -- * Helpers
+    Textual, textual,
+
+    module Data.Monoid
     ) where
 
 import qualified Data.Map as M
@@ -25,6 +25,10 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Data.Function (fix)
+
+import GHC.Generics
+import GHC.TypeLits
 
 import Data.Serialization
 import Data.Serialization.Dictionary
@@ -40,94 +44,97 @@ import Database.PostgreSQL.Simple.ToRow (ToRow(..))
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString.Char8 as P
 
--- | Model field
-newtype Field a = Field { fieldValue :: Maybe a }
+ -- | Field kind
+data FieldKind = Object | Patch | Meta
     deriving (Eq, Ord, Read, Show)
 
--- | Empty field
-emptyField :: Field a
-emptyField = Field Nothing
+-- | Field meta info
+data FieldMeta = FieldMeta { fieldName :: String } deriving (Eq, Ord, Read, Show)
 
--- | Field value
-mkField :: a -> Field a
-mkField = Field . Just
+-- | Model field
+type family Field (k :: FieldKind) a :: *
 
-instance Monoid (Field a) where
-    mempty = Field Nothing
-    mappend l (Field Nothing) = l
-    mappend _ r = r
-
--- | Field with documentation
-data Meta m v a = Meta {
-    metaDict :: Dictionarable Text v a,
-    metaPg :: Postgresable a,
-    metaInfo :: m }
-
-instance Monoid m => Combine (Meta m v) where
-    (Meta ld lp li) .**. (Meta rd rp ri) = Meta (ld .**. rd) (lp .**. rp) (mappend li ri)
-    (Meta ld lp li) .++. (Meta rd rp ri) = Meta (ld .++. rd) (lp .++. rp) (mappend li ri)
-    (Meta ld lp li) .+. (Meta rd rp ri) = Meta (ld .+. rd) (lp .+. rp) (mappend li ri)
-    iso <<>> (Meta d p i) = Meta (iso <<>> d) (iso <<>> p) i
-    (Meta d p i) .:. iso = Meta (d .:. iso) (p .:. iso) i
-    (Meta d p i) .*>> f = Meta (d .*>> (metaDict . f)) (p .*>> (metaPg . f)) i
-    pures x = Meta (pures x) (pures x) mempty
-    fails = Meta fails fails mempty
-
--- | Field meta information
-data FieldInfo = FieldInfo {
-    fieldDescription :: Text }
-
--- | Meta model information
-type ModelInfo = [(Text, Maybe FieldInfo)]
-
--- | Field serializer
-fieldMeta :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, i)] v (Field a)
-fieldMeta name meta = Meta (Iso Field fieldValue <<>> try (entry name dictionaryValue)) (Iso Field fieldValue <<>> pgField) [(name, meta)]
-
--- | Field serializer
-field :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> i -> Meta [(Text, Maybe i)] v (Field a)
-field name meta = fieldMeta name (Just meta)
-
--- | Field serializer with no meta info
-field_ :: (FieldSource v, DictionaryValue v a, FromField a, ToField a) => Text -> Meta [(Text, Maybe i)] v (Field a)
-field_ name = fieldMeta name Nothing
-
--- | Monoid by iso
--- Used in definition of 'Monoid' for 'Model'
-
-memptyIso :: (Monoid b) => Iso a b -> a
-memptyIso i = comorph i mempty
-
-mappendIso :: (Monoid b) => Iso a b -> a -> a -> a
-mappendIso i l r = comorph i $ mappend (morph i l) (morph i r)
-
--- | Source of primitive field, no members, just for doc
-class FieldSource s where
-
--- | Two sources: JSON-value and Map value
-instance FieldSource A.Value
-instance FieldSource ByteString
+type instance Field Object a = a
+type instance Field Patch a = Maybe a
+type instance Field Meta a = FieldMeta
 
 -- | Source of 'Model'
-class ModelSource s where
-    encodeModel :: Model m => m -> Either String s
-    decodeModel :: Model m => s -> Either String m
+--class ModelSource s where
+--    encodeModel :: Model m => m -> Either String s
+--    decodeModel :: Model m => s -> Either String m
 
--- | JSON source
-instance ModelSource ByteString where
-    encodeModel = encode (json <~> jsonModel)
-    decodeModel = decode (json <~> jsonModel)
+---- | JSON source
+--instance ModelSource ByteString where
+--    encodeModel = encode (json <~> jsonModel)
+--    decodeModel = decode (json <~> jsonModel)
 
--- | Redis source
-instance ModelSource (M.Map ByteString ByteString) where
-    encodeModel = encode redisModel
-    decodeModel = decode redisModel
+---- | Redis source
+--instance ModelSource (M.Map ByteString ByteString) where
+--    encodeModel = encode redisModel
+--    decodeModel = decode redisModel
+
+-- | Desctiption collector
+newtype Desc a = Desc { getDesc :: a } deriving (Eq, Ord, Read, Show)
+
+instance Combine Desc where
+    (Desc l) .*. (Desc r) = Desc (l, r)
+    (Desc l) .+. (Desc r) = Desc (Left l)
+    (Desc s) .:. iso = Desc (comorph iso s)
+
+instance GenericCombine Desc
+
+instance Selector c => GenericSerializable Desc (Stor c FieldMeta) where
+    gser = fix $ Desc . Stor . FieldMeta . storName . dummy where
+        dummy :: Desc (Stor c FieldMeta) -> Stor c FieldMeta
+        dummy _ = undefined
+
+-- | 'Model' class, defines way to serialize data
+class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
+    desc :: m Meta
+
+    default desc :: Serializable Desc (m Meta) => m Meta
+    desc = getDesc ser
+
+instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))
+    => Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable (Encoding ToFields)) (m k)) => Serializable (Encoding ToFields) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable (Decoding FromFields)) (m k)) => Serializable (Decoding FromFields) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable Desc) (m Meta)) => Serializable Desc (m Meta)
+
+type JsonedModel m k = (Model m, Serializable (Codec A.Object ToObject FromObject) (m k))
+type RedisedModel m k = (Model m, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k))
+
+modelJSON :: (JsonedModel m k) => JsonMemberable (m k)
+modelJSON = ser
+
+modelRedis :: (RedisedModel m k) => Dictionarable ByteString ByteString (m k)
+modelRedis = ser
+
+-- | Encode model as JSON
+encodeJSON :: (JsonedModel m k) => m k -> Either String ByteString
+encodeJSON = encode (json <~> object modelJSON)
+
+-- | Decode model from JSON
+decodeJSON :: (JsonedModel m k) => ByteString -> Either String (m k)
+decodeJSON = undefined
+
+-- | Encode model as Redis map
+encodeRedis :: (RedisedModel m k) => m k -> Either String (M.Map ByteString ByteString)
+encodeRedis = encode modelRedis
+
+-- | Decode model from Redis map
+decodeRedis :: (RedisedModel m k) => M.Map ByteString ByteString -> Either String (m k)
+decodeRedis = decode modelRedis
+
+--Data.Serialization.encode (ser :: Codec (Data.Aeson.Object) ToObject FromObject (My Model.Base.Object)) test
+-- Right fromList [("myInt",Number 10),("myString",String "Hello!")]
 
 -- | Implementations for encoding/decoding primitives info ByteString
-type Textual a = SerializableT ByteString Print Atto a
+type Textual a = CodecT ByteString Print Atto a
 
 textual :: (Show a) => P.Parser a -> Textual a
-textual p = serializable printShow (atto p)
+textual p = codec printShow (atto p)
 
 instance DictionaryValue ByteString Int where
     dictionaryValue = recode $ textual P.decimal
@@ -140,72 +147,3 @@ instance DictionaryValue ByteString Double where
 
 instance DictionaryValue ByteString String where
     dictionaryValue = recode $ textual $ fmap (T.unpack . T.decodeUtf8) P.takeByteString
-
--- | 'Model' class, defines way to serialize data
-class Monoid m => Model m where
-    asDict ::
-        (FieldSource v,
-        DictionaryValue v Int,
-        DictionaryValue v Text,
-        DictionaryValue v Double,
-        DictionaryValue v String)
-        => Meta ModelInfo v m
-
--- | Dummy asDict' to fix type
-asDict' :: Model m => Meta ModelInfo ByteString m
-asDict' = asDict
-
--- | Default instance for Aeson
-instance Model m => A.ToJSON m where
-    toJSON = S.toJSON jsonModel
-
--- | Default instance for Aeson
-instance Model m => A.FromJSON m where
-    parseJSON = S.fromJSON jsonModel
-
--- | Default instance for Postgresql
-instance Model m => FromRow m where
-    fromRow = rowParser $ metaPg asDict'
-
--- | Default instance for Postgresql
-instance Model m => ToRow m where
-    toRow = rowWriter $ metaPg asDict'
-
--- | Dummy type to show, that model is not value itself, it's just partial value
-newtype Partial m = Partial { partial :: m }
-    deriving (Eq, Ord, Read, Show)
-
-instance Monoid m => Monoid (Partial m) where
-    mempty = Partial mempty
-    mappend (Partial l) (Partial r) = Partial $ mappend l r
-
--- | Serialization into JSON
-jsonModel :: Model m => Jsonable m
-jsonModel = dict $ metaDict asDict
-
--- | Serialization into Map ByteString ByteString (Redis)
-redisModel :: Model m => Dictionarable ByteString ByteString m
-redisModel = rawDict <~> metaDict asDict where
-    rawDict :: Dictionarable ByteString ByteString (M.Map Text ByteString)
-    rawDict = Iso toDict fromDict <<>> anything
-    toDict :: M.Map ByteString ByteString -> M.Map Text ByteString
-    toDict = M.mapKeys T.decodeUtf8
-    fromDict :: M.Map Text ByteString -> M.Map ByteString ByteString
-    fromDict = M.mapKeys T.encodeUtf8
-
-modelInfo :: Model m => m -> ModelInfo
-modelInfo v = metaInfo (asDict_ v) where
-    asDict_ :: Model m => m -> Meta ModelInfo ByteString m
-    asDict_ _ = asDict
-
--- | Update value with partial data
-update :: Monoid m => m -> Partial m -> m
-update v (Partial x) = v `mappend` x
-
--- | Encode partial data
-encodePartial :: (ModelSource s, Model m) => Partial m -> Either String s
-encodePartial = encodeModel . partial
-
--- | Decode partial data
-decodePartial :: (ModelSource s, Model m) => s -> Either String (Partial m)
-decodePartial = fmap Partial . decodeModel
