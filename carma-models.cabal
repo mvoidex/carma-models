@@ -44,4 +44,7 @@ executable update
     containers == 0.5.*,
     bytestring == 0.10.*,
     transformers == 0.3.*,
-    carma-models == 0.2.*
+    carma-models == 0.2.*,
+    data-serialization == 0.2.*,
+    data-serialization-postgresql == 0.2.*,
+    postgresql-simple == 0.2.*

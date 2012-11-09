@@ -57,4 +57,5 @@ instance Model Case where
         (FieldMeta "services")
         (FieldMeta "contact_ownerName")
         (FieldMeta "partner_name")
+    modelTable _ = "casetbl"
 

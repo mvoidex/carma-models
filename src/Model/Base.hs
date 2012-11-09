@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators, DataKinds, PolyKinds, TypeFamilies, RankNTypes, ConstraintKinds, DefaultSignatures, OverlappingInstances #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators, DataKinds, PolyKinds, TypeFamilies, RankNTypes, ConstraintKinds, DefaultSignatures, OverlappingInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Model.Base (
@@ -7,6 +7,7 @@ module Model.Base (
     FieldMeta(..),
     Field,
     Model(..),
+    OptField(..), opt,
     
     -- * Model serialization
     modelJSON, modelRedis,
@@ -55,23 +56,8 @@ data FieldMeta = FieldMeta { fieldName :: String } deriving (Eq, Ord, Read, Show
 type family Field (k :: FieldKind) a :: *
 
 type instance Field Object a = a
-type instance Field Patch a = Maybe a
+type instance Field Patch a = OptField a
 type instance Field Meta a = FieldMeta
-
--- | Source of 'Model'
---class ModelSource s where
---    encodeModel :: Model m => m -> Either String s
---    decodeModel :: Model m => s -> Either String m
-
----- | JSON source
---instance ModelSource ByteString where
---    encodeModel = encode (json <~> jsonModel)
---    decodeModel = decode (json <~> jsonModel)
-
----- | Redis source
---instance ModelSource (M.Map ByteString ByteString) where
---    encodeModel = encode redisModel
---    decodeModel = decode redisModel
 
 -- | Desctiption collector
 newtype Desc a = Desc { getDesc :: a } deriving (Eq, Ord, Read, Show)
@@ -91,16 +77,24 @@ instance Selector c => GenericSerializable Desc (Stor c FieldMeta) where
 -- | 'Model' class, defines way to serialize data
 class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
     desc :: m Meta
+    modelTable :: Table (m k) -> String
 
     default desc :: Serializable Desc (m Meta) => m Meta
     desc = getDesc ser
 
+instance (A.FromJSON a, A.ToJSON a) => Serializable (Codec A.Object ToObject FromObject) (OptField a) where
+    ser = member "" (try value .:. Iso (opt Nothing Just) (maybe HasNo Has))
+
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))
     => Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k)
-instance (Model m, GenIsoDerivable (GenericSerializable (Encoding ToFields)) (m k)) => Serializable (Encoding ToFields) (m k)
-instance (Model m, GenIsoDerivable (GenericSerializable (Decoding FromFields)) (m k)) => Serializable (Decoding FromFields) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable Pgser) (m k)) => Serializable Pgser (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable Desc) (m Meta)) => Serializable Desc (m Meta)
+
+instance Model m => InTable (m Object) where
+    table = modelTable
+instance Model m => InTable (m Patch) where
+    table = modelTable
 
 type JsonedModel m k = (Model m, Serializable (Codec A.Object ToObject FromObject) (m k))
 type RedisedModel m k = (Model m, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k))

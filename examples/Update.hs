@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DataKinds, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings, DataKinds, DeriveGeneric, MultiParamTypeClasses, ConstraintKinds, FlexibleContexts, UndecidableInstances #-}
 
 module Main (
     test, testp, testd,
@@ -13,6 +13,9 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Database.Redis as R
+import Data.Serialization
+import Data.Serialization.Postgresql
+import Database.PostgreSQL.Simple
 
 import GHC.Generics
 
@@ -23,16 +26,23 @@ data My k = My {
     myString :: Field k String }
         deriving (Generic)
 
-instance Model My
+instance Model My where
+    modelTable _ = "mytbl"
 
 test :: My Object
 test = My 10 "Hello!"
 
 testp :: My Patch
-testp = My Nothing (Just "World!")
+testp = My HasNo (Has "World!")
 
 testd :: My Meta
 testd = desc
+
+testcon :: ConnectInfo
+testcon = defaultConnectInfo {
+    connectUser = "carma_db_sync",
+    connectPassword = "pass",
+    connectDatabase = "carma" }
 
 main :: IO ()
 main = do
@@ -42,3 +52,10 @@ main = do
     -- {"myInt":null,"myString":"World!"}
     either (const $ return ()) print $ encodeRedis test
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
+    con <- connect testcon
+    create con (Table :: Table (My Object))
+    insert con (My 0 "hello" :: My Object)
+    update_ con (My HasNo (Has "new") :: My Patch) " where myint = 0"
+    v <- select_ con "" :: IO [My Object]
+    mapM_ (either (const $ return ()) C8.putStrLn . encodeJSON) v
+    return ()
