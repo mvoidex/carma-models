@@ -2,55 +2,49 @@ carma-models
 ============
 
 Define model as ADT, where every member is "Field", then make instance.
-Such model can be serializable into JSON, Redis Map and Postgresql row.
-Model automatically derives FromJSON, ToJSON, FromRow and ToRow, 
+Such model can be serialized into JSON, Redis Map and Postgresql row.
 
 <pre>
-data MyModel = MyModel {
-	field1 :: Field Int,
-	field2 :: Field String,
-	field3 :: Field Double }
-		deriving (Eq, Ord, Read, Show)
+data My k = My {
+    myInt :: Field k Int,
+    myString :: Field k String }
+        deriving (Generic)
 
-$(makeIso "myModel" ''MyModel)
-
-instance Monoid MyModel where
-	mempty = memptyIso myModel
-	mappend = mappendIso myModel
-
-instance Model MyModel where
-	asDict =
-		field "field1" (FieldInfo "This field is number 1") .**.
-		field "field2" (FieldInfo "This is second field") .**.
-		field "field3" (FieldInfo "And the last")
-		.:.
-		myModel
+instance Model My where
+    modelTable _ = "mytbl"
 </pre>
 
-To get description:
+Object of model <code>My</code>: each field is value of its type, <code>Int</code> and <code>String</code> in example
 
 <pre>
-myInfo :: [(Text, FieldInfo)]
-myInfo = modelInfo (undefined :: MyModel)
+test :: My Object
+test = My 10 "Hello!"
 </pre>
 
-To encode:
+Patch: each field is of type <code>OptField</code>, where <code>Has</code> means, that field will be updated.
+<code>testp</code> is patch, which will update <code>String</code> field:
 
 <pre>
-test = MyModel (mkField 1) (mkField "some string") (mkField 1.2)
-
-jsoned :: Either String ByteString
-jsoned = encodeModel test
-
-redised :: Either String (Map ByteString ByteString)
-redised = encodeModel test
+testp :: My Patch
+testp = My HasNo (Has "World!")
 </pre>
 
-To decode use similar 'decodeModel' function.
-
-Model also can be used in postgresql queries since it derives FromRow/ToRow:
+Usage:
 
 <pre>
-select :: Connection -> IO [MyModel]
-select con = query_ con "select * from tbl where field1 = 10"
+main :: IO ()
+main = do
+    either (const $ return ()) C8.putStrLn $ encodeJSON test
+    -- {"myInt":10,"myString":"Hello!"}
+    either (const $ return ()) C8.putStrLn $ encodeJSON testp
+    -- {"myInt":null,"myString":"World!"}
+    either (const $ return ()) print $ encodeRedis test
+    -- fromList [("myInt","10"),("myString","\"Hello!\"")]
+    con &lt;- connect testcon
+    create con (Table :: Table (My Object))
+    insert con (My 0 "hello" :: My Object)
+    update_ con (My HasNo (Has "new") :: My Patch) " where myint = 0"
+    v &lt;- select_ con "" :: IO [My Object]
+    mapM_ (either (const $ return ()) C8.putStrLn . encodeJSON) v
+    return ()
 </pre>
