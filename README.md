@@ -46,5 +46,6 @@ main = do
     update_ con (My HasNo (Has "new") :: My Patch) " where myint = 0"
     v &lt;- select_ con "" :: IO [My Object]
     mapM_ (either (const $ return ()) C8.putStrLn . encodeJSON) v
+    -- {"myInt":0,"myString":"new"}
     return ()
 </pre>
