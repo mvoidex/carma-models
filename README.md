@@ -37,7 +37,7 @@ main = do
     either (const $ return ()) C8.putStrLn $ encodeJSON test
     -- {"myInt":10,"myString":"Hello!"}
     either (const $ return ()) C8.putStrLn $ encodeJSON testp
-    -- {"myInt":null,"myString":"World!"}
+    -- {"myString":"World!"}
     either (const $ return ()) print $ encodeRedis test
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
     con &lt;- connect testcon

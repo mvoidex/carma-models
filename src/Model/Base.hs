@@ -24,6 +24,7 @@ import qualified Data.Map as M
 import Data.Monoid
 import Data.ByteString (ByteString)
 import Data.Text (Text)
+import Data.String (fromString)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Function (fix)
@@ -82,8 +83,10 @@ class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
     default desc :: Serializable Desc (m Meta) => m Meta
     desc = getDesc ser
 
-instance (A.FromJSON a, A.ToJSON a) => Serializable (Codec A.Object ToObject FromObject) (OptField a) where
-    ser = member "" (try value .:. Iso (opt Nothing Just) (maybe HasNo Has))
+instance (Selector c, A.ToJSON a, A.FromJSON a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (OptField a)) where
+    gser = fix $ \r -> try (member (fromString $ storName (dummy r)) value) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
+        dummy :: Codec A.Object ToObject FromObject (Stor c a) -> Stor c a
+        dummy _ = undefined
 
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))

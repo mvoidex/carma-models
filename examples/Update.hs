@@ -49,10 +49,11 @@ main = do
     either (const $ return ()) C8.putStrLn $ encodeJSON test
     -- {"myInt":10,"myString":"Hello!"}
     either (const $ return ()) C8.putStrLn $ encodeJSON testp
-    -- {"myInt":null,"myString":"World!"}
+    -- {"myString":"World!"}
     either (const $ return ()) print $ encodeRedis test
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
     con <- connect testcon
+    execute_ con "drop table mytbl"
     create con (Table :: Table (My Object))
     insert con (My 0 "hello" :: My Object)
     update_ con (My HasNo (Has "new") :: My Patch) " where myint = 0"
