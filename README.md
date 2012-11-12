@@ -40,6 +40,8 @@ main = do
     -- {"myString":"World!"}
     either (const $ return ()) print $ encodeRedis test
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
+    either (const $ return ()) print $ encodeRedis testp
+    -- fromList [("myString","\"World!\"")]
     con &lt;- connect testcon
     create con (Table :: Table (My Object))
     insert con (My 0 "hello" :: My Object)

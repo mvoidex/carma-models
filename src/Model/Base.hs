@@ -83,9 +83,14 @@ class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
     default desc :: Serializable Desc (m Meta) => m Meta
     desc = getDesc ser
 
+instance (Selector c, DictionaryValue ByteString a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (OptField a)) where
+    gser = fix $ \r -> try (entry_ (fromString $ storName (dummy r))) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
+        dummy :: f (Stor c a) -> Stor c a
+        dummy _ = undefined
+
 instance (Selector c, A.ToJSON a, A.FromJSON a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (OptField a)) where
     gser = fix $ \r -> try (member (fromString $ storName (dummy r)) value) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
-        dummy :: Codec A.Object ToObject FromObject (Stor c a) -> Stor c a
+        dummy :: f (Stor c a) -> Stor c a
         dummy _ = undefined
 
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
@@ -123,9 +128,6 @@ encodeRedis = encode modelRedis
 -- | Decode model from Redis map
 decodeRedis :: (RedisedModel m k) => M.Map ByteString ByteString -> Either String (m k)
 decodeRedis = decode modelRedis
-
---Data.Serialization.encode (ser :: Codec (Data.Aeson.Object) ToObject FromObject (My Model.Base.Object)) test
--- Right fromList [("myInt",Number 10),("myString",String "Hello!")]
 
 -- | Implementations for encoding/decoding primitives info ByteString
 type Textual a = CodecT ByteString Print Atto a

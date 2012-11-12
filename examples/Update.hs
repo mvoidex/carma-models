@@ -52,6 +52,8 @@ main = do
     -- {"myString":"World!"}
     either (const $ return ()) print $ encodeRedis test
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
+    either (const $ return ()) print $ encodeRedis testp
+    -- fromList [("myString","\"World!\"")]
     con <- connect testcon
     execute_ con "drop table mytbl"
     create con (Table :: Table (My Object))
