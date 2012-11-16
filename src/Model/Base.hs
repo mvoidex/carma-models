@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances, FlexibleContexts, UndecidableInstances, MultiParamTypeClasses, TypeOperators, DataKinds, PolyKinds, TypeFamilies, RankNTypes, ConstraintKinds, DefaultSignatures, OverlappingInstances #-}
+{-# LANGUAGE TypeFamilies, DataKinds, DefaultSignatures, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, ConstraintKinds, UndecidableInstances, OverlappingInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Model.Base (
@@ -8,43 +8,16 @@ module Model.Base (
     Field,
     Model(..),
     OptField(..), opt,
-    
-    -- * Model serialization
-    modelJSON, modelRedis,
-    encodeJSON, decodeJSON,
-    encodeRedis, decodeRedis,
 
-    -- * Helpers
-    Textual, textual,
-
-    module Data.Monoid
+    patch, union
     ) where
 
-import qualified Data.Map as M
-import Data.Monoid
-import Data.ByteString (ByteString)
-import Data.Text (Text)
-import Data.String (fromString)
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import Data.Function (fix)
 
 import GHC.Generics
-import GHC.TypeLits
 
 import Data.Serialization
-import Data.Serialization.Dictionary
-import Data.Serialization.Text.Print
-import Data.Serialization.Text.Attoparsec
-import Data.Serialization.JSON.Aeson
-import Data.Serialization.JSON.Aeson as S (toJSON, fromJSON)
 import Data.Serialization.Postgresql
-import Database.PostgreSQL.Simple.FromField (FromField)
-import Database.PostgreSQL.Simple.ToField (ToField)
-import Database.PostgreSQL.Simple.FromRow (FromRow(..))
-import Database.PostgreSQL.Simple.ToRow (ToRow(..))
-import qualified Data.Aeson as A
-import qualified Data.Attoparsec.ByteString.Char8 as P
 
  -- | Field kind
 data FieldKind = Object | Patch | Meta
@@ -83,20 +56,6 @@ class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
     default desc :: Serializable Desc (m Meta) => m Meta
     desc = getDesc ser
 
-instance (Selector c, DictionaryValue ByteString a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (OptField a)) where
-    gser = fix $ \r -> try (entry_ (fromString $ storName (dummy r))) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
-        dummy :: f (Stor c a) -> Stor c a
-        dummy _ = undefined
-
-instance (Selector c, A.ToJSON a, A.FromJSON a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (OptField a)) where
-    gser = fix $ \r -> try (member (fromString $ storName (dummy r)) value) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
-        dummy :: f (Stor c a) -> Stor c a
-        dummy _ = undefined
-
-instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
-instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))
-    => Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k)
-instance (Model m, GenIsoDerivable (GenericSerializable Pgser) (m k)) => Serializable Pgser (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable Desc) (m Meta)) => Serializable Desc (m Meta)
 
 instance Model m => InTable (m Object) where
@@ -104,45 +63,64 @@ instance Model m => InTable (m Object) where
 instance Model m => InTable (m Patch) where
     table = modelTable
 
-type JsonedModel m k = (Model m, Serializable (Codec A.Object ToObject FromObject) (m k))
-type RedisedModel m k = (Model m, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k))
+patch :: (Model m, GenericPatch (m Object) (m Patch)) => m Object -> m Patch -> m Object
+patch = genPatch
 
-modelJSON :: (JsonedModel m k) => JsonMemberable (m k)
-modelJSON = ser
+union :: (Model m, GenericUnion (m Patch)) => m Patch -> m Patch -> m Patch
+union = genUnion
 
-modelRedis :: (RedisedModel m k) => Dictionarable ByteString ByteString (m k)
-modelRedis = ser
+class GenericPatch a b where
+    genPatch :: a -> b -> a
 
--- | Encode model as JSON
-encodeJSON :: (JsonedModel m k) => m k -> Either String ByteString
-encodeJSON = encode (json <~> object modelJSON)
+instance (Model m, GenIso (Rep (m Object)), GenIso (Rep (m Patch)), GenericPatch (IsoRep (m Object)) (IsoRep (m Patch))) => GenericPatch (m Object) (m Patch) where
+    genPatch x y = comorph giso $ genPatch (morph giso x) (morph giso y)
 
--- | Decode model from JSON
-decodeJSON :: (JsonedModel m k) => ByteString -> Either String (m k)
-decodeJSON = undefined
+instance GenericPatch a (OptField a) where
+    genPatch _ (Has x) = x
+    genPatch x HasNo = x
 
--- | Encode model as Redis map
-encodeRedis :: (RedisedModel m k) => m k -> Either String (M.Map ByteString ByteString)
-encodeRedis = encode modelRedis
+instance (GenericPatch a c, GenericPatch b d) => GenericPatch (a, b) (c, d) where
+    genPatch (x, y) (z, t) = (genPatch x z, genPatch y t)
 
--- | Decode model from Redis map
-decodeRedis :: (RedisedModel m k) => M.Map ByteString ByteString -> Either String (m k)
-decodeRedis = decode modelRedis
+instance (GenericPatch a c, GenericPatch b d) => GenericPatch (Either a b) (Either c d) where
+    genPatch (Left x) (Left z) = Left (genPatch x z)
+    genPatch (Left x) (Right _) = Left x
+    genPatch (Right y) (Left _) = Right y
+    genPatch (Right y) (Right t) = Right (genPatch y t)
 
--- | Implementations for encoding/decoding primitives info ByteString
-type Textual a = CodecT ByteString Print Atto a
+instance (GenericPatch a b, Selector sa, Selector sb) => GenericPatch (Stor sa a) (Stor sb b) where
+    genPatch (Stor x) (Stor y) = Stor (genPatch x y)
 
-textual :: (Show a) => P.Parser a -> Textual a
-textual p = codec printShow (atto p)
+instance (GenericPatch a b, Constructor ca, Constructor cb) => GenericPatch (Ctor ca a) (Ctor cb b) where
+    genPatch (Ctor x) (Ctor y) = Ctor (genPatch x y)
 
-instance DictionaryValue ByteString Int where
-    dictionaryValue = recode $ textual P.decimal
+instance (GenericPatch a b, Datatype da, Datatype db) => GenericPatch (Data da a) (Data db b) where
+    genPatch (Data x) (Data y) = Data (genPatch x y)
 
-instance DictionaryValue ByteString Text where
-    dictionaryValue = recode $ textual $ fmap T.decodeUtf8 P.takeByteString
+class GenericUnion a where
+    genUnion :: a -> a -> a
 
-instance DictionaryValue ByteString Double where
-    dictionaryValue = recode $ textual P.double
+instance (Model m, GenIsoDerivable GenericUnion (m Patch)) => GenericUnion (m Patch) where
+    genUnion x y = comorph giso $ genUnion (morph giso x) (morph giso y)
 
-instance DictionaryValue ByteString String where
-    dictionaryValue = recode $ textual $ fmap (T.unpack . T.decodeUtf8) P.takeByteString
+instance GenericUnion (OptField a) where
+    genUnion x HasNo = x
+    genUnion _ (Has y) = (Has y)
+
+instance (GenericUnion a, GenericUnion b) => GenericUnion (a, b) where
+    genUnion (lx, ly) (rx, ry) = (genUnion lx rx, genUnion ly ry)
+
+instance (GenericUnion a, GenericUnion b) => GenericUnion (Either a b) where
+    genUnion (Left x) (Left y) = Left (genUnion x y)
+    genUnion (Left x) (Right _) = Left x
+    genUnion (Right x) (Left _) = Right x
+    genUnion (Right x) (Right y) = Right (genUnion x y)
+
+instance (GenericUnion a, Selector s) => GenericUnion (Stor s a) where
+    genUnion (Stor x) (Stor y) = Stor (genUnion x y)
+
+instance (GenericUnion a, Constructor c) => GenericUnion (Ctor c a) where
+    genUnion (Ctor x) (Ctor y) = Ctor (genUnion x y)
+
+instance (GenericUnion a, Datatype d) => GenericUnion (Data d a) where
+    genUnion (Data x) (Data y) = Data (genUnion x y)

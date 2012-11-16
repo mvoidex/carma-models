@@ -17,13 +17,14 @@ library
   exposed-modules:
     Model
     Model.Base
+    Model.Serialization
     Model.Case
   other-modules:
   build-depends:
     base >= 4.5 && < 6,
     text == 0.11.*,
-    bytestring == 0.10.*,
     time == 1.4.*,
+    bytestring == 0.10.*,
     aeson == 0.6.*,
     containers == 0.5.*,
     attoparsec == 0.10.*,
@@ -34,16 +35,43 @@ library
     data-serialization-postgresql == 0.2.*,
     postgresql-simple == 0.2.*
 
-executable update
+executable test
   hs-source-dirs: examples
-  main-is: Update.hs
+  main-is: Test.hs
   build-depends:
     base >= 4.5 && < 6,
     hedis == 0.6.*,
     text == 0.11.*,
     containers == 0.5.*,
     bytestring == 0.10.*,
+    time == 1.4.*,
     transformers == 0.3.*,
+    carma-models == 0.2.*,
+    data-serialization == 0.2.*,
+    data-serialization-postgresql == 0.2.*,
+    postgresql-simple == 0.2.*
+
+executable test2
+  hs-source-dirs: examples
+  main-is: Test2.hs
+  build-depends:
+    base >= 4.5 && < 6,
+    hedis == 0.6.*,
+    containers == 0.5.*,
+    bytestring == 0.10.*,
+    carma-models == 0.2.*,
+    data-serialization == 0.2.*,
+    data-serialization-postgresql == 0.2.*,
+    postgresql-simple == 0.2.*
+
+executable sync
+  hs-source-dirs: examples
+  main-is: Sync.hs
+  build-depends:
+    base >= 4.5 && < 6,
+    hedis == 0.6.*,
+    containers == 0.5.*,
+    bytestring == 0.10.*,
     carma-models == 0.2.*,
     data-serialization == 0.2.*,
     data-serialization-postgresql == 0.2.*,
