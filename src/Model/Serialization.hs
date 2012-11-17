@@ -1,8 +1,9 @@
-{-# LANGUAGE DataKinds, ConstraintKinds, FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances, OverlappingInstances #-}
+{-# LANGUAGE OverloadedStrings, DataKinds, ConstraintKinds, FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances, OverlappingInstances #-}
 
 module Model.Serialization (
     -- * Model serialization
-    JsonedModel, RedisedModel,
+    JsonedModel, RedisedModel, PgsedModel,
+    SerializedModel,
     modelJSON, modelRedis,
     encodeJSON, decodeJSON,
     encodeRedis, decodeRedis,
@@ -57,6 +58,9 @@ instance (Model m, GenIsoDerivable (GenericSerializable Pgser) (m k)) => Seriali
 
 type JsonedModel m k = (Model m, Serializable (Codec A.Object ToObject FromObject) (m k))
 type RedisedModel m k = (Model m, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k))
+type PgsedModel m k = (Model m, Serializable Pgser (m k))
+
+type SerializedModel m = (Model m, JsonedModel m Object, RedisedModel m Object, PgsedModel m Object, JsonedModel m Patch, RedisedModel m Patch, PgsedModel m Patch)
 
 modelJSON :: (JsonedModel m k) => JsonMemberable (m k)
 modelJSON = ser
@@ -97,6 +101,14 @@ instance DictionaryValue ByteString Double where
 
 instance DictionaryValue ByteString String where
     dictionaryValue = recode $ textual $ fmap (T.unpack . T.decodeUtf8) P.takeByteString
+
+instance DictionaryValue ByteString Bool where
+    dictionaryValue = Convertible fromBool toBool where
+        fromBool True = Right "1"
+        fromBool False = Right "0"
+        toBool "1" = Right True
+        toBool "0" = Right False
+        toBool s = Left $ "Can't convert to bool: " ++ T.unpack (T.decodeUtf8 s)
 
 instance A.ToJSON LocalTime where
     toJSON = A.toJSON . (floor :: POSIXTime -> Integer) . utcTimeToPOSIXSeconds . localTimeToUTC utc
