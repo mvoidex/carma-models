@@ -8,6 +8,7 @@ module Model.Base (
     Field,
     Model(..),
     OptField(..), opt,
+    Parent(..),
 
     patch, union
     ) where
@@ -47,6 +48,9 @@ instance Selector c => GenericSerializable Desc (Stor c FieldMeta) where
     gser = fix $ Desc . Stor . FieldMeta . storName . dummy where
         dummy :: Desc (Stor c FieldMeta) -> Stor c FieldMeta
         dummy _ = undefined
+
+instance (Selector c, Serializable Desc a) => GenericSerializable Desc (Stor c (Parent a)) where
+    gser = ser .:. Iso (parent . unStor) (Stor . Parent)
 
 -- | 'Model' class, defines way to serialize data
 class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where

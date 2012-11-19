@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DataKinds, DeriveGeneric, MultiParamTypeClasses, ConstraintKinds, FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE OverloadedStrings, DataKinds, DeriveGeneric, MultiParamTypeClasses, ConstraintKinds, FlexibleContexts, UndecidableInstances, FlexibleInstances #-}
 
 module Main (
     test, testp, testd,
@@ -24,17 +24,37 @@ import Model
 
 data My k = My {
     myInt :: Field k Int,
-    myString :: Field k String }
+    myString :: Field k (Maybe String) }
         deriving (Generic)
+
+data MyChild k = MyChild {
+    myChild :: Field k String,
+    myParent :: Parent (My k) }
+        deriving (Generic)
+
+instance Show (My Object) where
+    show (My i s) = "My { myInt = " ++ show i ++ ", myString = " ++ show s ++ " }"
+
+instance Show (My Patch) where
+    show (My i s) = "My { myInt = " ++ opt "<null>" show i ++ ", myString = " ++ opt "<null>" show s ++ " }"
+
+instance Show (MyChild Object) where
+    show (MyChild n (Parent (My i s))) = "MyChild { myChild = " ++ show n ++ ", myInt = " ++ show i ++ ", myString = " ++ show s ++ " }"
+
+instance Show (MyChild Patch) where
+    show (MyChild n (Parent (My i s))) = "MyChild { myChild = " ++ opt "<null>" show n ++ ", myInt = " ++ opt "<null>" show i ++ ", myString = " ++ opt "<null>" show s ++ " }"
 
 instance Model My where
     modelTable _ = "mytbl"
 
+instance Model MyChild where
+    modelTable _ = "mychildtbl"
+
 test :: My Object
-test = My 10 "Hello!"
+test = My 10 (Just "Hello!")
 
 testp :: My Patch
-testp = My HasNo (Has "World!")
+testp = My HasNo (Has (Just "World!"))
 
 testd :: My Meta
 testd = desc
@@ -47,6 +67,7 @@ testcon = defaultConnectInfo {
 
 main :: IO ()
 main = do
+    putStrLn "=== JSON ==="
     either (const $ return ()) C8.putStrLn $ encodeJSON test
     -- {"myInt":10,"myString":"Hello!"}
     either (const $ return ()) C8.putStrLn $ encodeJSON testp
@@ -55,12 +76,22 @@ main = do
     -- fromList [("myInt","10"),("myString","\"Hello!\"")]
     either (const $ return ()) print $ encodeRedis testp
     -- fromList [("myString","\"World!\"")]
+    putStrLn "=== POSTGRESQL ==="
     con <- connect testcon
-    execute_ con "drop table mytbl"
+    execute_ con "drop table if exists mychildtbl"
+    execute_ con "drop table if exists mytbl"
     create con (Table :: Table (My Object))
-    insert con (My 0 "hello" :: My Object)
-    update_ con (My HasNo (Has "new") :: My Patch) $ " where " ++ fieldName (myInt desc) ++ " = 0"
+    create con (Table :: Table (MyChild Object))
+    insert con (My 0 (Just "hello") :: My Object)
+    insert con (MyChild "Some" (Parent (My 1 Nothing)) :: MyChild Object)
+    update_ con (My HasNo (Has (Just "new")) :: My Patch) $ " where " ++ fieldName (myInt desc) ++ " = 0"
+    putStrLn "=== SELECT ALL MY ==="
     v <- select_ con "" :: IO [My Object]
     mapM_ (either (const $ return ()) C8.putStrLn . encodeJSON) v
-    -- {"myInt":0,"myString":"new"}
+    --{"myInt":0,"myString":"new"}
+    --{"myInt":1,"myString":null}
+    putStrLn "=== SELECT ALL MYCHILD ==="
+    v' <- select_ con "" :: IO [MyChild Object]
+    mapM_ (either (const $ return ()) C8.putStrLn . encodeJSON) v'
+    --{"myInt":1,"myString":null,"myChild":"Some"}
     return ()

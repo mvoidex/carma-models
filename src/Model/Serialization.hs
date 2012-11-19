@@ -51,6 +51,12 @@ instance (Selector c, A.ToJSON a, A.FromJSON a) => GenericSerializable (Codec A.
         dummy :: f (Stor c a) -> Stor c a
         dummy _ = undefined
 
+instance (Selector c, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (Parent a)) where
+    gser = ser .:. Iso (parent . unStor) (Stor . Parent)
+
+instance (Selector c, Serializable (Codec A.Object ToObject FromObject) a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (Parent a)) where
+    gser = ser .:. Iso (parent . unStor) (Stor . Parent)
+
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))
     => Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k)
@@ -74,7 +80,7 @@ encodeJSON = encode (json <~> object modelJSON)
 
 -- | Decode model from JSON
 decodeJSON :: (JsonedModel m k) => ByteString -> Either String (m k)
-decodeJSON = undefined
+decodeJSON = decode (json <~> object modelJSON)
 
 -- | Encode model as Redis map
 encodeRedis :: (RedisedModel m k) => m k -> Either String (M.Map ByteString ByteString)
@@ -120,3 +126,10 @@ instance DictionaryValue ByteString LocalTime where
     dictionaryValue = recode $ (textual P.decimal .:. Iso toPosix fromPosix) where
         toPosix = floor . utcTimeToPOSIXSeconds . localTimeToUTC utc
         fromPosix = utcToLocalTime utc . posixSecondsToUTCTime . fromInteger
+
+instance DictionaryValue ByteString a => DictionaryValue ByteString (Maybe a) where
+    dictionaryValue = Convertible to from where
+        to Nothing = return ""
+        to (Just v) = convertTo dictionaryValue v
+        from "" = return Nothing
+        from s = fmap Just $ convertFrom dictionaryValue s
