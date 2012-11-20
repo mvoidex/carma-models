@@ -19,12 +19,10 @@ import Data.Serialization.Postgresql
 import System.Environment
 
 import Model
-import Model.Case (Case)
 import qualified Model.Case as Case
-import Model.Partner (Partner)
 import qualified Model.Partner as Partner
-import Model.Action (Action)
 import qualified Model.Action as Action
+import qualified Model.Call as Call
 
 psqlCon :: P.ConnectInfo
 psqlCon = P.defaultConnectInfo {
@@ -76,3 +74,4 @@ main = do
                 "case" -> void $ (sync rcon pcon "case" (modelTable (Table :: Table (Case Patch))) (\i v -> v { Case.id = Has i }) maxId :: IO (Maybe (Case Patch)))
                 "partner" -> void $ (sync rcon pcon "partner" (modelTable (Table :: Table (Partner Patch))) (\i v -> v { Partner.id = Has i }) maxId :: IO (Maybe (Partner Patch)))
                 "action" -> void $ (sync rcon pcon "action" (modelTable (Table :: Table (Action Patch))) (\i v -> v { Action.id = Has i }) maxId :: IO (Maybe (Action Patch)))
+                "call" -> void $ (sync rcon pcon "call" (modelTable (Table :: Table (Call Patch))) (\i v -> v { Call.id = Has i }) maxId :: IO (Maybe (Call Patch)))

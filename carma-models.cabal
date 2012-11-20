@@ -32,6 +32,7 @@ library
     Model.Groups.VinCar
     Model.Groups.VinContact
     Model.Action
+    Model.Call
     Model.Case
     Model.Partner
   other-modules:
