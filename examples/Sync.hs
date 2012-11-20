@@ -23,6 +23,8 @@ import Model.Case (Case)
 import qualified Model.Case as Case
 import Model.Partner (Partner)
 import qualified Model.Partner as Partner
+import Model.Action (Action)
+import qualified Model.Action as Action
 
 psqlCon :: P.ConnectInfo
 psqlCon = P.defaultConnectInfo {
@@ -73,3 +75,4 @@ main = do
             case mdl of
                 "case" -> void $ (sync rcon pcon "case" (modelTable (Table :: Table (Case Patch))) (\i v -> v { Case.id = Has i }) maxId :: IO (Maybe (Case Patch)))
                 "partner" -> void $ (sync rcon pcon "partner" (modelTable (Table :: Table (Partner Patch))) (\i v -> v { Partner.id = Has i }) maxId :: IO (Maybe (Partner Patch)))
+                "action" -> void $ (sync rcon pcon "action" (modelTable (Table :: Table (Action Patch))) (\i v -> v { Action.id = Has i }) maxId :: IO (Maybe (Action Patch)))

@@ -19,6 +19,8 @@ import Model.Case (Case)
 import qualified Model.Case as Case
 import Model.Partner (Partner)
 import qualified Model.Partner as Partner
+import Model.Action (Action)
+import qualified Model.Action as Action
 
 psqlCon :: P.ConnectInfo
 psqlCon = P.defaultConnectInfo {
@@ -42,4 +44,5 @@ main = do
     case mdl of
         "case" -> void $ (dump con fromi toi :: IO [Case Patch])
         "partner" -> void $ (dump con fromi toi :: IO [Partner Patch])
+        "action" -> void $ (dump con fromi toi :: IO [Action Patch])
         _ -> putStrLn $ "Unknown model: " ++ mdl
