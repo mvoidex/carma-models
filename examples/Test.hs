@@ -18,6 +18,9 @@ import Data.Serialization
 import Data.Serialization.Postgresql
 import Database.PostgreSQL.Simple
 
+import qualified Data.Aeson as A
+import Data.Serialization.JSON.Aeson
+
 import GHC.Generics
 
 import Model
@@ -27,10 +30,16 @@ data My k = My {
     myString :: Field k (Maybe String) }
         deriving (Generic)
 
+data Inner k = Inner {
+    innerInt :: Field k Int }
+        deriving (Generic)
+
 data MyChild k = MyChild {
     myChild :: Field k String,
-    myParent :: Parent (My k) }
+    myParent :: Parent (My k),
+    myGrouped :: Group (Inner k) }
         deriving (Generic)
+
 
 instance Show (My Object) where
     show (My i s) = "My { myInt = " ++ show i ++ ", myString = " ++ show s ++ " }"
@@ -39,15 +48,19 @@ instance Show (My Patch) where
     show (My i s) = "My { myInt = " ++ opt "<null>" show i ++ ", myString = " ++ opt "<null>" show s ++ " }"
 
 instance Show (MyChild Object) where
-    show (MyChild n (Parent (My i s))) = "MyChild { myChild = " ++ show n ++ ", myInt = " ++ show i ++ ", myString = " ++ show s ++ " }"
+    show (MyChild n (Parent (My i s)) (Group (Inner v))) = "MyChild { myChild = " ++ show n ++ ", myInt = " ++ show i ++ ", myString = " ++ show s ++ ", myGrouped_innerInt = " ++ show v ++ " }"
 
 instance Show (MyChild Patch) where
-    show (MyChild n (Parent (My i s))) = "MyChild { myChild = " ++ opt "<null>" show n ++ ", myInt = " ++ opt "<null>" show i ++ ", myString = " ++ opt "<null>" show s ++ " }"
+    show (MyChild n (Parent (My i s)) (Group (Inner v))) = "MyChild { myChild = " ++ opt "<null>" show n ++ ", myInt = " ++ opt "<null>" show i ++ ", myString = " ++ opt "<null>" show s ++ ", myGrouped_innerInt = " ++ opt "<null>" show v ++ " }"
 
-instance Model My where
+instance Model My
+instance ModelTable My where
     modelTable _ = "mytbl"
 
-instance Model MyChild where
+instance Model Inner
+
+instance Model MyChild
+instance ModelTable MyChild where
     modelTable _ = "mychildtbl"
 
 test :: My Object
@@ -83,7 +96,7 @@ main = do
     create con (Table :: Table (My Object))
     create con (Table :: Table (MyChild Object))
     insert con (My 0 (Just "hello") :: My Object)
-    insert con (MyChild "Some" (Parent (My 1 Nothing)) :: MyChild Object)
+    insert con (MyChild "Some" (Parent (My 1 Nothing)) (Group (Inner 20)) :: MyChild Object)
     update_ con (My HasNo (Has (Just "new")) :: My Patch) $ " where " ++ fieldName (myInt desc) ++ " = 0"
     putStrLn "=== SELECT ALL MY ==="
     v <- select_ con "" :: IO [My Object]

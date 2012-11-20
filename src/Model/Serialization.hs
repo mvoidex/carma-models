@@ -12,8 +12,16 @@ module Model.Serialization (
     Textual, textual
     ) where
 
+import Control.Arrow
+import Control.Monad.Writer
+import Control.Monad.State
 import qualified Data.Map as M
+import qualified Data.HashMap.Strict as HM
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as C8
+import Data.Char (toLower)
+import Data.Maybe (fromMaybe)
+import Data.List (stripPrefix)
 import Data.Text (Text)
 import Data.Function (fix)
 import Data.String (fromString)
@@ -41,15 +49,14 @@ import Data.Serialization.Postgresql
 
 import Model.Base
 
+dummy :: Selector c => f (Stor c a) -> Stor c a
+dummy _ = undefined
+
 instance (Selector c, DictionaryValue ByteString a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (OptField a)) where
-    gser = fix $ \r -> try (entry_ (fromString $ storName (dummy r))) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
-        dummy :: f (Stor c a) -> Stor c a
-        dummy _ = undefined
+    gser = fix $ \r -> try (entry_ (fromString $ storName (dummy r))) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has)
 
 instance (Selector c, A.ToJSON a, A.FromJSON a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (OptField a)) where
-    gser = fix $ \r -> try (member (fromString $ storName (dummy r)) value) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has) where
-        dummy :: f (Stor c a) -> Stor c a
-        dummy _ = undefined
+    gser = fix $ \r -> try (member (fromString $ storName (dummy r)) value) .:. Iso (opt Nothing Just . unStor) (Stor . maybe HasNo Has)
 
 instance (Selector c, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (Parent a)) where
     gser = ser .:. Iso (parent . unStor) (Stor . Parent)
@@ -57,9 +64,63 @@ instance (Selector c, Serializable (Codec (M.Map ByteString ByteString) (ToDicti
 instance (Selector c, Serializable (Codec A.Object ToObject FromObject) a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (Parent a)) where
     gser = ser .:. Iso (parent . unStor) (Stor . Parent)
 
+instance (Selector c, Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) a) => GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (Stor c (Group a)) where
+    gser = fix $ \r -> withPrefix (storName $ dummy r) (ser .:. Iso (group . unStor) (Stor . Group)) where
+        withPrefix :: String -> Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString) a -> Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString) a
+        withPrefix pre (Codec (Encoding enc) (Decoding dec)) = Codec (Encoding enc') (Decoding dec') where
+            enc' x = ToDictionary $ do
+                dict <- lift $ execWriterT $ toDict $ enc x
+                tell $ map (first $ C8.append preBS) dict
+            dec' = do
+                modify (M.mapKeys removePrefix)
+                dec
+                where
+                    removePrefix k
+                        | C8.isPrefixOf preBS k = C8.drop (C8.length preBS) k
+                        | otherwise = k
+            preBS = T.encodeUtf8 . T.pack $ pre ++ "_"
+
+instance (Selector c, Serializable (Codec A.Object ToObject FromObject) a) => GenericSerializable (Codec A.Object ToObject FromObject) (Stor c (Group a)) where
+    gser = fix $ \r -> withPrefix (storName $ dummy r) (ser .:. Iso (group . unStor) (Stor . Group)) where
+        withPrefix :: String -> Codec A.Object ToObject FromObject a -> Codec A.Object ToObject FromObject a
+        withPrefix pre (Codec (Encoding enc) (Decoding dec)) = Codec (Encoding enc') (Decoding dec') where
+            enc' x = ToObject $ do
+                pairs <- lift $ execWriterT $ runToObject $ enc x
+                tell $ map (first $ T.append preT) pairs
+            dec' = do
+                modify (HM.fromList . map (first removePrefix) . HM.toList)
+                dec
+                where
+                    removePrefix k
+                        | T.isPrefixOf preT k = T.drop (T.length preT) k
+                        | otherwise = k
+            preT = T.pack $ pre ++ "_"
+
+instance (Selector c, Serializable Pgser a) => GenericSerializable Pgser (Stor c (Group a)) where
+    gser = fix $ \r -> withPrefix (storName $ dummy r) (ser .:. Iso (group . unStor) (Stor . Group)) where
+        withPrefix :: String -> Pgser a -> Pgser a
+        withPrefix pre (Pgser (Encoding enc) (Decoding dec) (Fields fs)) = Pgser (Encoding enc') (Decoding dec') (Fields fs') where
+            enc' x = ToFields $ ToDictionary $ do
+                dict <- lift $ execWriterT $ toDict $ toFields $ enc x
+                tell $ map (first $ (pre_ ++)) dict
+            dec' = FromFields $ do
+                modify (M.mapKeys removePrefix)
+                fromFields dec
+                where
+                    removePrefix k = fromMaybe k $ stripPrefix pre_ k
+            fs' = map (first (pre_ ++)) fs
+            pre_ = map toLower $ pre ++ "_"
+
+instance (Selector c, Serializable Fields a) => GenericSerializable Fields (Stor c (Group a)) where
+    gser = fix $ \r -> withPrefix (storName $ dummy r) (ser .:. Iso (group . unStor) (Stor . Group)) where
+        withPrefix :: String -> Fields a -> Fields a
+        withPrefix pre (Fields fs) = Fields $ map (first (pre_ ++)) fs where
+            pre_ = pre ++ "_"
+
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec A.Object ToObject FromObject)) (m k)) => Serializable (Codec A.Object ToObject FromObject) (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString))) (m k))
     => Serializable (Codec (M.Map ByteString ByteString) (ToDictionary ByteString ByteString) (FromDictionary ByteString ByteString)) (m k)
+instance (Model m, GenIsoDerivable (GenericSerializable Fields) (m k)) => Serializable Fields (m k)
 instance (Model m, GenIsoDerivable (GenericSerializable Pgser) (m k)) => Serializable Pgser (m k)
 
 type JsonedModel m k = (Model m, Serializable (Codec A.Object ToObject FromObject) (m k))

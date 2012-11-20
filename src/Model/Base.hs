@@ -6,9 +6,12 @@ module Model.Base (
     FieldKind(..),
     FieldMeta(..),
     Field,
+    Desc(..),
     Model(..),
+    ModelTable(..),
     OptField(..), opt,
     Parent(..),
+    Group(..),
 
     patch, union
     ) where
@@ -55,17 +58,29 @@ instance (Selector c, Serializable Desc a) => GenericSerializable Desc (Stor c (
 -- | 'Model' class, defines way to serialize data
 class (Generic (m Object), Generic (m Patch), Generic (m Meta)) => Model m where
     desc :: m Meta
-    modelTable :: Table (m k) -> String
 
     default desc :: Serializable Desc (m Meta) => m Meta
     desc = getDesc ser
 
+class Model m => ModelTable m where
+    modelTable :: Table (m k) -> String
+
 instance (Model m, GenIsoDerivable (GenericSerializable Desc) (m Meta)) => Serializable Desc (m Meta)
 
-instance Model m => InTable (m Object) where
+instance ModelTable m => InTable (m Object) where
     table = modelTable
-instance Model m => InTable (m Patch) where
+instance ModelTable m => InTable (m Patch) where
     table = modelTable
+
+class ModelGroup (m :: FieldKind -> *) where
+
+-- | Grouped fields, prefixed with selector name and underscore
+data Group a = Group {
+    group :: a }
+
+instance (Selector c, Serializable Desc a) => GenericSerializable Desc (Stor c (Group a)) where
+    -- TODO: Fixme
+    gser = ser .:. Iso (group . unStor) (Stor . Group)
 
 patch :: (Model m, GenericPatch (m Object) (m Patch)) => m Object -> m Patch -> m Object
 patch = genPatch

@@ -43,7 +43,7 @@ main = do
             Nothing -> putStrLn "Invalid command"
             Just act -> act i
     where
-        psqlModel :: (Model m, JsonedModel m Patch, PgsedModel m Patch) => P.Connection -> String -> IO [m Patch]
+        psqlModel :: (ModelTable m, JsonedModel m Patch, PgsedModel m Patch) => P.Connection -> String -> IO [m Patch]
         psqlModel con i = do
             vs <- select con " where id = ?" (P.Only i)
             mapM_ printModel vs

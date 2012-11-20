@@ -18,6 +18,19 @@ library
     Model
     Model.Base
     Model.Serialization
+    Model.Groups
+    Model.Groups.Address
+    Model.Groups.Bill
+    Model.Groups.Car
+    Model.Groups.CarContact
+    Model.Groups.CardNumber
+    Model.Groups.Contact
+    Model.Groups.CountedCost
+    Model.Groups.Partner
+    Model.Groups.Payment
+    Model.Groups.Times
+    Model.Groups.VinCar
+    Model.Groups.VinContact
     Model.Case
     Model.Partner
   other-modules:
@@ -28,6 +41,8 @@ library
     bytestring == 0.10.*,
     aeson == 0.6.*,
     containers == 0.5.*,
+    unordered-containers == 0.2.*,
+    mtl >= 2.0 && < 2.2,
     attoparsec == 0.10.*,
     data-serialization == 0.2.*,
     data-serialization-attoparsec == 0.2.*,
@@ -41,6 +56,7 @@ executable test
   main-is: Test.hs
   build-depends:
     base >= 4.5 && < 6,
+    aeson == 0.6.*,
     hedis == 0.6.*,
     text == 0.11.*,
     containers == 0.5.*,
@@ -50,6 +66,7 @@ executable test
     carma-models == 0.2.*,
     data-serialization == 0.2.*,
     data-serialization-postgresql == 0.2.*,
+    data-serialization-aeson == 0.2.*,
     postgresql-simple == 0.2.*
 
 executable test2
@@ -58,6 +75,18 @@ executable test2
   build-depends:
     base >= 4.5 && < 6,
     hedis == 0.6.*,
+    containers == 0.5.*,
+    bytestring == 0.10.*,
+    carma-models == 0.2.*,
+    data-serialization == 0.2.*,
+    data-serialization-postgresql == 0.2.*,
+    postgresql-simple == 0.2.*
+
+executable test3
+  hs-source-dirs: examples
+  main-is: Test3.hs
+  build-depends:
+    base >= 4.5 && < 6,
     containers == 0.5.*,
     bytestring == 0.10.*,
     carma-models == 0.2.*,

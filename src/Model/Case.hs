@@ -10,26 +10,36 @@ import Data.Text (Text)
 import Data.Time
 
 import Model.Base
+import Model.Groups
 
--- | Case model
+-- | Case modeld
 data Case (k :: FieldKind) = Case {
     id :: Field k Int,
-    car_make :: Field k Text,
-    car_model :: Field k Text,
-    car_program :: Field k Text,
-    car_vin :: Field k Text,
-    car_buyDate :: Field k LocalTime,
-    car_plateNum :: Field k Text,
-    diagnosis1 :: Field k Text,
-    diagnosis2 :: Field k Text,
-    dealerCause :: Field k Text,
-    caseAddress_address :: Field k Text,
     callDate :: Field k LocalTime,
     callTaker :: Field k Text,
     comment :: Field k Text,
+    diagnosis1 :: Field k Text,
+    diagnosis2 :: Field k Text,
+    diagnosis3 :: Field k Text,
+    diagnosis4 :: Field k Text,
+    contact :: Group (CarContact k),
     program :: Field k Text,
-    services :: Field k Text }
+    car :: Group (Car k),
+    cardNumber :: Group (CardNumber k),
+    vinChecked :: Field k Text,
+    caseAddress :: Group (Address k),
+    city :: Field k Text,
+    temperature :: Field k Text,
+    dealerCause :: Field k Text,
+    caseStatus :: Field k Text,
+    claim :: Field k Text,
+    betaComment :: Field k Text,
+    services :: Field k Text,
+    actions :: Field k Text,
+    files :: Field k Text,
+    comments :: Field k Text }
         deriving (Generic)
 
-instance Model Case where
+instance Model Case
+instance ModelTable Case where
     modelTable _ = "casetbl"
